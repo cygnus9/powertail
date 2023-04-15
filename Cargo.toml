@@ -1,0 +1,23 @@
+[package]
+authors = ["Mark Swaanenburg <mark@swaanenburg.nl>"]
+categories = ["command-line-utilities"]
+description = "Tail, but on steroids."
+homepage = "https://github.com/cygnus9/powertail"
+license = "MIT OR Apache-2.0"
+name = "powertail"
+repository = "https://github.com/cygnus9/powertail"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "ptail"
+path = "src/main.rs"
+
+[dependencies]
+console = { version = "0.15.5", default-features = false }
+itertools = "0.10.5"
+
+[profile.release]
+lto = "fat"
+strip = true
+codegen-units = 1

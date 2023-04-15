@@ -1,2 +1,2 @@
 # powertail
-Tail, but on steroids 
+Tail, but on steroids
