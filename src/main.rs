@@ -8,16 +8,39 @@ use std::{
     thread,
 };
 
+use clap::Parser;
 use console::Term;
 use itertools::join;
 
 static THREAD_NAME: &str = "Console Write";
 
+#[derive(Parser)]
+#[command(about, version)]
+struct Cli {
+    /// Output NUM lines to the terminal
+    #[arg(short = 'n', long, value_name = "NUM", default_value = "10")]
+    lines: usize,
+
+    /// Retain NUM lines after the input stream is closed
+    #[arg(long, value_name = "NUM")]
+    retain: Option<usize>,
+}
+
 fn main() -> Result<(), Box<dyn Error>> {
+    let cli = Cli::parse();
+
     let (tx, rx) = mpsc::channel();
     let thread = thread::Builder::new()
         .name(THREAD_NAME.into())
-        .spawn(move || console_writer(rx))?;
+        .spawn(move || {
+            console_writer(
+                EmitterOpts {
+                    lines: cli.lines,
+                    retain: cli.retain.unwrap_or(cli.lines),
+                },
+                rx,
+            )
+        })?;
 
     let result = pipe_reader(stdin().lock(), tx);
     thread.join().unwrap();
@@ -54,8 +77,8 @@ where
     Ok(())
 }
 
-fn console_writer(rx: Receiver<Cmd>) {
-    let mut emitter = Emitter::with_lines(7);
+fn console_writer(emitter_opts: EmitterOpts, rx: Receiver<Cmd>) {
+    let mut emitter = Emitter::new(emitter_opts);
 
     loop {
         match rx.recv() {
@@ -64,19 +87,33 @@ fn console_writer(rx: Receiver<Cmd>) {
             Ok(Cmd::Line(new_line)) => emitter.add_line(new_line).unwrap(),
         };
     }
-    emitter.flush_fragments().unwrap();
+}
+
+struct EmitterOpts {
+    lines: usize,
+    retain: usize,
 }
 
 struct Emitter {
     lines: VecDeque<String>,
+    retain: usize,
     fragments: RefCell<Vec<String>>,
     term: Term,
 }
 
+impl Drop for Emitter {
+    fn drop(&mut self) {
+        let _ = self
+            .flush_fragments()
+            .and_then(|_| self.truncate(self.retain));
+    }
+}
+
 impl Emitter {
-    fn with_lines(lines: usize) -> Self {
+    fn new(opts: EmitterOpts) -> Self {
         Self {
-            lines: VecDeque::with_capacity(lines),
+            lines: VecDeque::with_capacity(opts.lines),
+            retain: opts.retain,
             fragments: RefCell::new(Vec::default()),
             term: Term::stdout(),
         }
@@ -114,6 +151,19 @@ impl Emitter {
             self.lines.pop_front();
             self.lines.push_back(line);
             self.term.clear_last_lines(self.lines.capacity())?;
+            for line in &self.lines {
+                self.term.write_line(line)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn truncate(&mut self, retain: usize) -> Result<(), Box<dyn Error>> {
+        if self.lines.len() > retain {
+            self.term.clear_last_lines(self.lines.len())?;
+            while self.lines.len() > retain {
+                self.lines.pop_front();
+            }
             for line in &self.lines {
                 self.term.write_line(line)?;
             }
