@@ -144,15 +144,16 @@ impl Emitter {
     }
 
     fn write_line(&mut self, line: String) -> Result<(), Box<dyn Error>> {
+        let width = self.term.size().1 as usize;
         if self.lines.len() < self.lines.capacity() {
-            self.term.write_line(&line)?;
+            self.term.write_line(&line[..width.min(line.len())])?;
             self.lines.push_back(line);
         } else {
             self.lines.pop_front();
             self.lines.push_back(line);
             self.term.clear_last_lines(self.lines.capacity())?;
             for line in &self.lines {
-                self.term.write_line(line)?;
+                self.term.write_line(&line[..width.min(line.len())])?;
             }
         }
         Ok(())
